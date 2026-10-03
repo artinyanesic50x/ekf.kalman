@@ -1,0 +1,111 @@
+<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>آزمایشگاه ناوبری کوانتومی – EKF</title>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f3f6f9;--fg:#18222d;--mu:#5d6b79;--bd:#dde4eb;--cd:#fff;--hd:#eef2f6;--ac:#1560d4;--gr:#e6ebf0;--ou:#e3e8ee;--tr:#18222d;--A:#d96f00;--B:#1560d4;--C:#c0392b;--D:#0e9473;--wn:#9a5b00}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#0c1116;--fg:#e4ebf2;--mu:#8e9cab;--bd:#26313c;--cd:#131a22;--hd:#19222c;--ac:#5aa7ff;--gr:#212b35;--ou:#1a232d;--tr:#e4ebf2;--A:#ffaa4d;--B:#5aa7ff;--C:#ff7d73;--D:#3fd0a8;--wn:#f0b45a}}
+:root[data-theme=dark]{color-scheme:dark;--bg:#0c1116;--fg:#e4ebf2;--mu:#8e9cab;--bd:#26313c;--cd:#131a22;--hd:#19222c;--ac:#5aa7ff;--gr:#212b35;--ou:#1a232d;--tr:#e4ebf2;--A:#ffaa4d;--B:#5aa7ff;--C:#ff7d73;--D:#3fd0a8;--wn:#f0b45a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.9 Vazirmatn,Tahoma,sans-serif}
+.w{max-width:1120px;margin:auto;padding:18px 14px 28px}
+h1{font-size:23px;margin:0 0 4px;line-height:1.5}h2{font-size:15px;margin:0 0 8px}
+.s{color:var(--mu);margin:0 0 16px;max-width:78ch}
+.g{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));margin-top:12px}
+.c{border:1px solid var(--bd);border-radius:10px;padding:12px 14px;background:var(--cd);min-width:0}
+.kp{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr))}
+.kv{font-size:22px;font-weight:700;direction:ltr;text-align:right;color:var(--ac)}
+label{display:flex;justify-content:space-between;font-size:13px;margin-top:6px}label b{direction:ltr;color:var(--ac)}
+input[type=range]{width:100%;accent-color:var(--ac)}
+button{font:inherit;background:var(--ac);color:#fff;border:0;border-radius:8px;padding:6px 14px;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+canvas{width:100%;height:260px;display:block}
+.t{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{border-bottom:1px solid var(--bd);padding:5px 8px;text-align:center;white-space:nowrap}th{background:var(--hd)}
+.k{direction:ltr;text-align:left;font-family:ui-monospace,monospace;font-size:12.5px}
+.l span{display:inline-block;margin-left:14px;font-size:12px}.l i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-left:4px}
+small{color:var(--mu)}.wn{color:var(--wn);font-weight:700}
+</style></head><body><div class="w">
+<h1>ناوبری ترکیبی کوانتومی: شتاب‌سنج اتمی، MEMS و GNSS در یک EKF</h1>
+<p class="s">تداخل‌سنج اتمی Rb‑87 با فاز Δφ = k<sub>eff</sub>·a·T² بایاس MEMS را تخمین می‌زند تا هنگام قطع GNSS رانش موقعیت مهار شود. پارامترها را تغییر دهید؛ چهار پیکربندی بلافاصله بازمحاسبه می‌شوند و با مونت‌کارلو می‌توان پایداری آماری را سنجید.</p>
+<div class="kp" id="kp"></div>
+<div class="g">
+<div class="c"><h2>پارامترهای حسگر و سناریو</h2>
+<label>زمان تداخل T (ms)<b id="vT"></b></label><input id="T" type="range" min="5" max="40" value="20">
+<label>نویز فاز هر شات σφ (mrad)<b id="vp"></b></label><input id="sphi" type="range" min="1" max="300" value="50">
+<label>بایاس اولیه MEMS (mg)<b id="vb"></b></label><input id="bias" type="range" min="0" max="10" step=".1" value="3">
+<label>طول قطع GNSS (s)<b id="vd"></b></label><input id="dur" type="range" min="0" max="180" step="5" value="100">
+<label>σ موقعیت GNSS (m)<b id="vg"></b></label><input id="gs" type="range" min=".5" max="10" step=".5" value="2">
+<label>دانه تصادفی<b id="vs"></b></label><input id="seed" type="range" min="1" max="99" value="7"></div>
+<div class="c"><h2>مشخصات مشتق‌شده و ابهام فرینج</h2><div id="der" class="k"></div></div></div>
+<div class="c" style="margin-top:12px"><h2>آمار تک‌اجرا (۳۰۰ ثانیه، dt = 0.02 s)</h2><div class="t" id="st"></div></div>
+<div class="c" style="margin-top:12px"><h2>مونت‌کارلو: میانگین ± انحراف معیار روی ۶ دانه</h2><button id="mc">اجرای مونت‌کارلو</button> <small>بازهٔ NEES مطلوب برای موقعیت ۲بعدی ≈ ۲</small><div class="t" id="mr" style="margin-top:8px"></div></div>
+<div class="c l" style="margin-top:12px"><span><i style="background:var(--tr)"></i>حقیقت</span><span><i style="background:var(--A)"></i>A: MEMS+GNSS</span><span><i style="background:var(--B)"></i>B: MEMS+کوانتومی+GNSS</span><span><i style="background:var(--D)"></i>D: MEMS+کوانتومی بدون GNSS</span><span><i style="background:var(--C)"></i>C: فقط MEMS</span><span><i style="background:var(--ou);border:1px solid var(--mu)"></i>ناحیه قطع GNSS</span></div>
+<div class="g">
+<div class="c"><h2>مسیر (m)</h2><canvas id="c1"></canvas></div>
+<div class="c"><h2>خطای موقعیت (m) و کران 3σ فیلتر B</h2><canvas id="c2"></canvas></div>
+<div class="c"><h2>خطای سرعت (m/s)</h2><canvas id="c3"></canvas></div>
+<div class="c"><h2>تخمین بایاس شتاب‌سنج (mg)</h2><canvas id="c4"></canvas></div>
+<div class="c"><h2>الگوی فرینج: P(a) = ½[1 − C cos(k·a·T²)]</h2><canvas id="c5"></canvas></div></div>
+<div class="c" style="margin-top:12px"><h2>مدل ریاضی</h2><div class="k" style="white-space:pre-wrap">حالت‌ها: [x, y, ψ, v, b] | x⁺=x+v·cosψ·dt ، y⁺=y+v·sinψ·dt ، ψ⁺=ψ+r_m·dt ، v⁺=v+(a_m−b)·dt
+ژاکوبین F: ∂x/∂ψ=−v·sinψ·dt ، ∂x/∂v=cosψ·dt ، ∂y/∂ψ=v·cosψ·dt ، ∂y/∂v=sinψ·dt ، ∂v/∂b=−dt
+GNSS (1 Hz): z=[x,y]+n ، R=σ²I | کوانتومی (10 Hz): z=mean(a_MEMS)−a_Q = b+n ، R=σ_Q²+σ_M²/5
+به‌روزرسانی اسکالر متوالی با فرم Joseph ؛ σ_Q = σφ /(k_eff·T²)</div>
+<small>فرض‌ها: حرکت دوبعدی، شتاب‌سنج طولی، ژیرو با بایاس 10°/h و ARW=0.1°/√h، MEMS با 100 µg/√Hz و راه‌پیمایی تصادفی بایاس. مدل کوانتومی «ابهام‌زدایی ایده‌آل فرینج» را فرض می‌کند؛ ضریب ρ بالا نشان می‌دهد این فرض در عمل به قفل میان‌فرینج یا چندزمانه نیاز دارد. مدل آموزشی است.</small></div>
+</div>
+<script>
+const $=i=>document.getElementById(i),G0=9.80665,DT=.02,NS=15000,PI=Math.PI,K4=4*PI/780.241e-9,V=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const NM=['A: MEMS+GNSS','B: MEMS+کوانتومی+GNSS','C: فقط MEMS (INS)','D: MEMS+کوانتومی بدون GNSS'],CF=[[0,1],[1,1],[0,0],[1,0]];
+function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const gs=r=>Math.sqrt(-2*Math.log(r()+1e-12))*Math.cos(2*PI*r());
+function upd(x,P,h,y,r){const Ph=new Float64Array(5);let S=r;for(let i=0;i<5;i++){let s=0;for(let j=0;j<5;j++)s+=P[i*5+j]*h[j];Ph[i]=s;S+=h[i]*s}
+const K=Ph.map(v=>v/S);for(let i=0;i<5;i++)x[i]+=K[i]*y;
+const A=new Float64Array(25);for(let i=0;i<5;i++)for(let j=0;j<5;j++)A[i*5+j]=(i==j)-K[i]*h[j];
+const AP=new Float64Array(25);for(let i=0;i<5;i++)for(let k=0;k<5;k++){const a=A[i*5+k];if(a)for(let j=0;j<5;j++)AP[i*5+j]+=a*P[k*5+j]}
+for(let i=0;i<5;i++)for(let j=0;j<5;j++){let s=K[i]*r*K[j];for(let k=0;k<5;k++)s+=AP[i*5+k]*A[j*5+k];P[i*5+j]=s}}
+const RS=a=>a.length?Math.sqrt(a.reduce((s,v)=>s+v*v,0)/a.length):NaN;
+function run(p,Q,GN){const R=rng(p.seed*977),o0=100,o1=100+p.dur,sM=100e-6*G0*5,sQ=p.sphi*1e-3/(K4*(p.T*1e-3)**2),sG=2.06e-4,brw=2e-4;
+let tx=0,ty=0,tp=.3,tb=p.bias*1e-3*G0,acc=0,accT=0,n5=0,ne=0,nn=0;const x=[0,0,.33,15.5,0],P=new Float64Array(25);[25,25,.0025,1,.0025].forEach((v,i)=>P[i*6]=v);
+const O={t:[],px:[],py:[],tx:[],ty:[],ex:[],ev:[],b:[],bt:[],s3:[]},e2=[],e2o=[];
+for(let k=0;k<NS;k++){const t=k*DT,v=15+3*Math.sin(2*PI*t/60),a=6*PI/60*Math.cos(2*PI*t/60),r=.08*Math.sin(2*PI*t/90)+.05*Math.sin(2*PI*t/37);
+tx+=v*Math.cos(tp)*DT;ty+=v*Math.sin(tp)*DT;tp+=r*DT;tb+=brw*Math.sqrt(DT)*gs(R);
+const am=a+tb+sM*gs(R),rm=r+4.85e-5+sG*gs(R),nq=gs(R),n1=gs(R),n2=gs(R),c=Math.cos(x[2]),s=Math.sin(x[2]),vv=x[3];
+const F=new Float64Array(25);for(let i=0;i<5;i++)F[i*6]=1;F[2]=-vv*s*DT;F[3]=c*DT;F[7]=vv*c*DT;F[8]=s*DT;F[19]=-DT;
+x[0]+=vv*c*DT;x[1]+=vv*s*DT;x[2]+=rm*DT;x[3]+=(am-x[4])*DT;
+const FP=new Float64Array(25);for(let i=0;i<5;i++)for(let m=0;m<5;m++){const f=F[i*5+m];if(f)for(let j=0;j<5;j++)FP[i*5+j]+=f*P[m*5+j]}
+const q=[1e-6,1e-6,4e-10,(sM*DT)**2,brw*brw*DT];for(let i=0;i<5;i++)for(let j=0;j<5;j++){let z=i==j?q[i]:0;for(let m=0;m<5;m++)z+=FP[i*5+m]*F[j*5+m];P[i*5+j]=z}
+acc+=am;accT+=a;n5++;
+if(Q&&n5==5)upd(x,P,[0,0,0,0,1],acc/5-(accT/5+sQ*nq)-x[4],sQ*sQ+sM*sM/5);if(n5==5){acc=accT=0;n5=0}
+if(GN&&k%50==49&&!(t>=o0&&t<o1)){upd(x,P,[1,0,0,0,0],tx+p.gs*n1-x[0],p.gs**2);upd(x,P,[0,1,0,0,0],ty+p.gs*n2-x[1],p.gs**2)}
+if(k%10==0){const ex=x[0]-tx,ey=x[1]-ty,e=Math.hypot(ex,ey);O.t.push(t);O.px.push(x[0]);O.py.push(x[1]);O.tx.push(tx);O.ty.push(ty);O.ex.push(e);O.ev.push(x[3]-v);O.b.push(x[4]/G0*1e3);O.bt.push(tb/G0*1e3);O.s3.push(3*Math.sqrt((P[0]+P[6])/2));
+const det=P[0]*P[6]-P[1]*P[5];if(det>0){ne+=(P[6]*ex*ex-2*P[1]*ex*ey+P[0]*ey*ey)/det;nn++}(t>=o0&&t<o1?e2o:e2).push(e)}}
+const all=e2.concat(e2o);O.st={rmse:RS(all),out:RS(e2o),max:Math.max(...all),fin:O.ex[O.ex.length-1],brm:RS(O.b.map((v,i)=>v-O.bt[i])),nees:nn?ne/nn:NaN};return O}
+const f=v=>isFinite(v)?v.toFixed(2):'—',tbl=(h,r)=>`<table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${r.map(a=>`<tr>${a.map((x,i)=>`<td${i?'':' style="text-align:right"'}>${x}</td>`).join('')}</tr>`).join('')}</table>`;
+const P0=()=>({T:+$('T').value,sphi:+$('sphi').value,bias:+$('bias').value,dur:+$('dur').value,gs:+$('gs').value,seed:+$('seed').value});
+function chart(id,o){const c=$(id),d=devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight,mu=V('--mu'),gr=V('--gr');c.width=W*d;c.height=H*d;const g=c.getContext('2d');g.scale(d,d);
+const m={l:48,r:8,t:8,b:30};let x0=1e99,x1=-1e99,y0=1e99,y1=-1e99;
+o.s.forEach(s=>{s.y.forEach(v=>{if(v<y0)y0=v;if(v>y1)y1=v});s.x.forEach(v=>{if(v<x0)x0=v;if(v>x1)x1=v})});
+if(o.y0!=null)y0=o.y0;if(y1==y0)y1+=1;const pw=W-m.l-m.r,ph=H-m.t-m.b;
+if(o.eq){const sc=Math.max((x1-x0)/pw,(y1-y0)/ph),cx=(x0+x1)/2,cy=(y0+y1)/2;x0=cx-sc*pw/2;x1=cx+sc*pw/2;y0=cy-sc*ph/2;y1=cy+sc*ph/2}
+const X=v=>m.l+(v-x0)/(x1-x0)*pw,Y=v=>m.t+ph-(v-y0)/(y1-y0)*ph;
+if(o.out&&o.out[1]>o.out[0]){g.fillStyle=V('--ou');g.fillRect(X(o.out[0]),m.t,X(o.out[1])-X(o.out[0]),ph)}
+g.strokeStyle=gr;g.fillStyle=mu;g.font='11px sans-serif';g.lineWidth=1;
+for(let i=0;i<=5;i++){const yv=y0+(y1-y0)*i/5,xv=x0+(x1-x0)*i/5;g.beginPath();g.moveTo(m.l,Y(yv));g.lineTo(W-m.r,Y(yv));g.moveTo(X(xv),m.t);g.lineTo(X(xv),m.t+ph);g.stroke();g.textAlign='right';g.fillText(+yv.toPrecision(3),m.l-4,Y(yv)+4);g.textAlign='center';g.fillText(+xv.toPrecision(3),X(xv),H-16)}
+g.fillText(o.xl,m.l+pw/2,H-3);
+o.s.forEach(s=>{g.beginPath();s.x.forEach((v,i)=>i?g.lineTo(X(v),Y(s.y[i])):g.moveTo(X(v),Y(s.y[i])));g.strokeStyle=V(s.c);g.lineWidth=s.w||1.6;g.setLineDash(s.d||[]);g.stroke();g.setLineDash([])})}
+function go(){const p=P0();
+[['vT','T'],['vp','sphi'],['vb','bias'],['vd','dur'],['vg','gs'],['vs','seed']].forEach(([a,b])=>$(a).textContent=p[b]);
+const [A,B,C,D]=CF.map(c=>run(p,...c)),kT=K4*(p.T*1e-3)**2,sa=p.sphi*1e-3/kT,rho=100e-6*G0*5/Math.sqrt(5)*kT/PI;
+$('kp').innerHTML=[['RMSE موقعیت B (m)',f(B.st.rmse)],['بهبود در قطع GNSS (A÷B)',isFinite(A.st.out/B.st.out)?(A.st.out/B.st.out).toFixed(1)+'×':'—'],['RMS خطای بایاس B (mg)',f(B.st.brm)],['نسبت ابهام فرینج ρ',rho.toFixed(1)]].map(([a,b])=>`<div class="c"><small>${a}</small><div class="kv">${b}</div></div>`).join('');
+$('der').innerHTML=`k_eff = 4π/λ = ${K4.toExponential(4)} rad/m (λ=780.241 nm)<br>k_eff·T² = ${kT.toFixed(0)} rad/(m/s²)<br>σ_a هر شات = ${sa.toExponential(2)} m/s² (${(sa/G0*1e6).toFixed(2)} µg)<br>حساسیت ≈ ${(sa*Math.sqrt(.1)/G0*1e6).toFixed(2)} µg/√Hz<br>برد بدون ابهام = ±${(PI/kT*1e3).toFixed(3)} mm/s²<br>نویز MEMS هر نمونه = ${(100e-6*G0*5*1e3).toFixed(2)} mm/s²<br>ρ = σ_MEMS(avg5)·kT²/π = ${rho.toFixed(2)}<br>`+(rho>1?`<span class="wn">ρ&gt;1: MEMS به‌تنهایی فرینج را ابهام‌زدایی نمی‌کند؛ نتایج به‌صورت ایده‌آل‌شده‌اند. T را کمتر کنید.</span>`:`<span style="color:var(--D)">ρ≤1: ابهام‌زدایی با MEMS عملی است.</span>`);
+$('st').innerHTML=tbl(['پیکربندی','RMSE (m)','RMSE در قطع (m)','بیشینه (m)','نهایی (m)','RMS بایاس (mg)','NEES'],[A,B,C,D].map((O,i)=>[NM[CF.findIndex((_,j)=>j==i)],...['rmse','out','max','fin','brm','nees'].map(k=>f(O.st[k]))]));
+const out=[100,100+p.dur],S=(O,y,c,x,e={})=>Object.assign({x:x||O.t,y:O[y],c},e);
+chart('c1',{eq:1,xl:'x (m)',s:[S(A,'ty','--tr',A.tx,{w:2.4}),S(C,'py','--C',C.px,{w:1.2}),S(A,'py','--A',A.px),S(B,'py','--B',B.px)]});
+chart('c2',{xl:'t (s)',y0:0,out,s:[S(A,'ex','--A'),S(B,'ex','--B'),S(D,'ex','--D',0,{d:[5,3]}),S(B,'s3','--B',0,{d:[2,3],w:1})]});
+chart('c3',{xl:'t (s)',out,s:[S(A,'ev','--A'),S(B,'ev','--B'),S(D,'ev','--D',0,{d:[5,3]})]});
+chart('c4',{xl:'t (s)',out,s:[S(A,'bt','--tr',0,{w:2.2}),S(A,'b','--A'),S(B,'b','--B'),S(D,'b','--D',0,{d:[5,3]})]});
+const xs=[],ys=[],a0=PI/kT*1.5e3;for(let i=0;i<=400;i++){const a=-a0+2*a0*i/400;xs.push(a);ys.push(.5*(1-.8*Math.cos(kT*a*1e-3)))}
+chart('c5',{xl:'a (mm/s²)',y0:0,s:[{x:xs,y:ys,c:'--B'}]})}
+$('mc').onclick=()=>{$('mr').innerHTML='<small>در حال اجرا…</small>';setTimeout(()=>{const p=P0(),R=CF.map(()=>[[],[],[]]);
+for(let s=0;s<6;s++)CF.forEach((c,i)=>{const r=run({...p,seed:p.seed+13*s},...c).st;R[i][0].push(r.rmse);R[i][1].push(r.out);R[i][2].push(r.nees)});
+const ms=a=>{const m=a.reduce((x,y)=>x+y,0)/a.length;return isFinite(m)?m.toFixed(2)+' ± '+Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/(a.length-1)).toFixed(2):'—'};
+$('mr').innerHTML=tbl(['پیکربندی','RMSE (m)','RMSE در قطع (m)','NEES'],R.map((r,i)=>[NM[i],...r.map(ms)]))},30)};
+document.querySelectorAll('input').forEach(e=>e.oninput=()=>{clearTimeout(go.t);go.t=setTimeout(go,60)});
+addEventListener('resize',go);matchMedia('(prefers-color-scheme:dark)').addEventListener('change',go);new MutationObserver(go).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});go();
+</script></body></html>
